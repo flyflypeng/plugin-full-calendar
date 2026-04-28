@@ -181,6 +181,18 @@ interface TasksCacheData {
 
 export type EditableEventResponse = [OFCEvent, EventLocation | null];
 
+const isWarmTasksCacheData = (cacheData: TasksCacheData | null | undefined): boolean => {
+  if (!cacheData?.tasks) {
+    return false;
+  }
+
+  if (typeof cacheData.state === 'string') {
+    return cacheData.state === 'Warm';
+  }
+
+  return cacheData.state?.name === 'Warm';
+};
+
 export class TasksPluginProvider implements CalendarProvider<TasksProviderConfig> {
   // Static metadata for registry
   static readonly type = 'tasks';
@@ -330,36 +342,46 @@ export class TasksPluginProvider implements CalendarProvider<TasksProviderConfig
     if (this.tasksPromise) {
       return this.tasksPromise;
     }
-    this.tasksPromise = new Promise((resolve, reject) => {
-      const callback = (cacheData: TasksCacheData) => {
-        if (
-          cacheData &&
-          ((typeof cacheData.state === 'string' && cacheData.state === 'Warm') ||
-            (typeof cacheData.state === 'object' && cacheData.state?.name === 'Warm')) &&
-          cacheData.tasks
-        ) {
-          this.allTasks = this.parseTasksForCalendar(cacheData.tasks);
-          this.isTasksCacheWarm = true;
-          this.tasksPromise = null;
-          resolve();
+    this.tasksPromise = this.requestTasksCacheData()
+      .then(cacheData => {
+        this.allTasks = this.parseTasksForCalendar(cacheData.tasks ?? []);
+        this.isTasksCacheWarm = true;
+      })
+      .finally(() => {
+        this.tasksPromise = null;
+      });
+    return this.tasksPromise;
+  }
+
+  private requestTasksCacheData(): Promise<TasksCacheData> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
         }
+        settled = true;
+        console.error(
+          "Full Calendar: Timed out waiting for Tasks plugin's cache. The Tasks plugin may not be enabled or may have failed to load."
+        );
+        reject(new Error("Timed out waiting for Tasks plugin's cache."));
+      }, 5000);
+
+      const callback = (cacheData: TasksCacheData) => {
+        if (settled || !isWarmTasksCacheData(cacheData)) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        resolve(cacheData);
       };
+
       const workspace = this.plugin.app.workspace as unknown as {
         trigger: (event: string, callback: (data: TasksCacheData) => void) => void;
       };
 
       workspace.trigger('obsidian-tasks-plugin:request-cache-update', callback);
-      setTimeout(() => {
-        if (!this.isTasksCacheWarm) {
-          console.error(
-            "Full Calendar: Timed out waiting for Tasks plugin's cache. The Tasks plugin may not be enabled or may have failed to load."
-          );
-          this.tasksPromise = null;
-          reject(new Error("Timed out waiting for Tasks plugin's cache."));
-        }
-      }, 5000);
     });
-    return this.tasksPromise;
   }
 
   /**
@@ -403,6 +425,39 @@ export class TasksPluginProvider implements CalendarProvider<TasksProviderConfig
     };
 
     return [ofcEvent, location];
+  }
+
+  private isTaskDueOrStartingOnDate(task: CalendarTask, referenceDate: Date): boolean {
+    const targetDay = DateTime.fromJSDate(referenceDate).startOf('day');
+    const matchesTargetDay = (date: Date | null): boolean => {
+      if (!date) {
+        return false;
+      }
+      return DateTime.fromJSDate(date).startOf('day').equals(targetDay);
+    };
+
+    return matchesTargetDay(task.dueDate) || matchesTargetDay(task.startDate);
+  }
+
+  public async syncTasksFromPlugin(
+    referenceDate = new Date()
+  ): Promise<{ todayCount: number; eventCount: number }> {
+    const cacheData = await this.requestTasksCacheData();
+    this.allTasks = this.parseTasksForCalendar(cacheData.tasks ?? []);
+    this.isTasksCacheWarm = true;
+
+    const events = this.allTasks
+      .map(task => this._taskToOFCEvent(task))
+      .filter((event): event is [OFCEvent, EventLocation | null] => event !== null);
+
+    this.plugin.cache?.syncCalendar(this.source.id, events);
+    this.plugin.providerRegistry.refreshBacklogViews();
+
+    return {
+      todayCount: this.allTasks.filter(task => this.isTaskDueOrStartingOnDate(task, referenceDate))
+        .length,
+      eventCount: events.length
+    };
   }
 
   /**

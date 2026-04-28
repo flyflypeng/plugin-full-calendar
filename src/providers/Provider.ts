@@ -64,6 +64,16 @@ export interface CalendarProvider<TConfig> {
    */
   canBeScheduledAt?(event: OFCEvent, date: Date): Promise<{ isValid: boolean; reason?: string }>;
 
+  /**
+   * Optional: Provider-specific manual refresh hook.
+   * Tasks uses this to force a fresh read from the Obsidian Tasks plugin cache when the user
+   * clicks the calendar toolbar sync button.
+   */
+  syncTasksFromPlugin?(referenceDate?: Date): Promise<{
+    todayCount: number;
+    eventCount: number;
+  }>;
+
   getConfigurationComponent(): FCReactComponent<{
     plugin: FullCalendarPlugin;
     config: Partial<TConfig>;

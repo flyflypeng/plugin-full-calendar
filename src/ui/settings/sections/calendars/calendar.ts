@@ -173,7 +173,7 @@ export async function renderCalendar(
       return {
         mode: 'compact-desktop',
         headerToolbar: {
-          left: 'today prev,next',
+          left: 'syncTasks today prev,next',
           center: 'title',
           right: 'analysis more'
         },
@@ -188,7 +188,7 @@ export async function renderCalendar(
     return {
       mode: 'desktop',
       headerToolbar: {
-        left: 'workspace prev,next today,navigate',
+        left: 'workspace syncTasks prev,next today,navigate',
         center: 'title',
         right: `analysis ${fullDesktopViewGroup}`
       },

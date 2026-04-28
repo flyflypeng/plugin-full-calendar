@@ -31,10 +31,41 @@ type MockPlugin = {
     workspace: { trigger: jest.Mock };
   };
   settings: Record<string, unknown>;
+  cache: {
+    syncCalendar: jest.Mock;
+  };
   providerRegistry: {
     refreshBacklogViews: jest.Mock;
   };
 };
+
+type MockTasksDate = {
+  toDate: () => Date;
+};
+
+type MockTasksTask = {
+  path: string;
+  description: string;
+  taskLocation: { lineNumber: number };
+  startDate?: MockTasksDate;
+  dueDate?: MockTasksDate;
+  scheduledDate?: MockTasksDate;
+  originalMarkdown: string;
+  isDone?: boolean;
+};
+
+const taskDate = (isoDate: string): MockTasksDate => ({
+  toDate: () => new Date(`${isoDate}T00:00:00`)
+});
+
+const createTask = (overrides: Partial<MockTasksTask> = {}): MockTasksTask => ({
+  path: 'tasks.md',
+  description: 'Test task',
+  taskLocation: { lineNumber: 0 },
+  originalMarkdown: '- [ ] Test task',
+  isDone: false,
+  ...overrides
+});
 
 describe('TasksPluginProvider', () => {
   let provider: TasksPluginProvider;
@@ -68,6 +99,9 @@ describe('TasksPluginProvider', () => {
         }
       },
       settings: {},
+      cache: {
+        syncCalendar: jest.fn()
+      },
       providerRegistry: {
         refreshBacklogViews: jest.fn()
       }
@@ -139,6 +173,64 @@ describe('TasksPluginProvider', () => {
       await expect(
         provider.createInstanceOverride(masterEvent, instanceDate, newEventData)
       ).rejects.toThrow('Tasks provider does not support recurring event overrides.');
+    });
+  });
+
+  describe('manual Tasks cache sync', () => {
+    it('forces a fresh Tasks cache request and syncs dated tasks into EventCache', async () => {
+      const today = new Date('2026-04-28T12:00:00');
+      const tasks = [
+        createTask({
+          description: 'Due today (09:00)',
+          dueDate: taskDate('2026-04-28'),
+          originalMarkdown: '- [ ] Due today (09:00) 📅 2026-04-28'
+        }),
+        createTask({
+          path: 'project.md',
+          description: 'Starts today',
+          taskLocation: { lineNumber: 3 },
+          startDate: taskDate('2026-04-28'),
+          originalMarkdown: '- [ ] Starts today 🛫 2026-04-28'
+        }),
+        createTask({
+          path: 'later.md',
+          description: 'Due tomorrow',
+          dueDate: taskDate('2026-04-29'),
+          originalMarkdown: '- [ ] Due tomorrow 📅 2026-04-29'
+        })
+      ];
+
+      mockPlugin.app.workspace.trigger.mockImplementation(
+        (eventName: string, callback: (data: unknown) => void) => {
+          if (eventName === 'obsidian-tasks-plugin:request-cache-update') {
+            callback({ state: { name: 'Warm' }, tasks });
+          }
+        }
+      );
+
+      const result = await provider.syncTasksFromPlugin(today);
+
+      expect(mockPlugin.app.workspace.trigger).toHaveBeenCalledWith(
+        'obsidian-tasks-plugin:request-cache-update',
+        expect.any(Function)
+      );
+      expect(mockPlugin.cache.syncCalendar).toHaveBeenCalledWith('tasks_1', expect.any(Array));
+
+      const syncedEvents = mockPlugin.cache.syncCalendar.mock.calls[0][1];
+      expect(syncedEvents).toHaveLength(3);
+      expect(syncedEvents[0][0]).toMatchObject({
+        title: 'Due today',
+        date: '2026-04-28',
+        allDay: false,
+        startTime: '09:00'
+      });
+      expect(syncedEvents[1][0]).toMatchObject({
+        title: 'Starts today',
+        date: '2026-04-28',
+        allDay: true
+      });
+      expect(result).toEqual({ todayCount: 2, eventCount: 3 });
+      expect(mockPlugin.providerRegistry.refreshBacklogViews).toHaveBeenCalled();
     });
   });
 

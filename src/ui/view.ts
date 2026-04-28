@@ -307,6 +307,22 @@ export class CalendarView extends ItemView {
     }
   }
 
+  private async syncTasksFromPlugin(): Promise<void> {
+    try {
+      const summary = await this.plugin.providerRegistry.syncTasksFromPlugin(new Date());
+      new Notice(
+        t('ui.view.success.tasksSynced', {
+          count: summary.todayCount,
+          total: summary.eventCount
+        })
+      );
+    } catch (error) {
+      console.error('Full Calendar: Failed to sync Tasks plugin cache.', error);
+      const message = error instanceof Error ? error.message : t('ui.view.errors.tasksSyncFailed');
+      new Notice(message);
+    }
+  }
+
   /**
    * Generates shadow events for parent categories in timeline views.
    * Shadow events provide visual aggregation of child subcategory events.
@@ -599,6 +615,12 @@ export class CalendarView extends ItemView {
             text: this.getWorkspaceSwitcherText(),
             click: (ev?: MouseEvent) => {
               if (ev) this.showWorkspaceSwitcher(ev);
+            }
+          },
+          syncTasks: {
+            text: t('ui.view.buttons.syncTasks'),
+            click: () => {
+              void this.syncTasksFromPlugin();
             }
           },
           analysis: {

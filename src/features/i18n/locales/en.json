@@ -727,19 +727,23 @@
         "chronoAnalyserFailed": "Failed to open Chrono Analyser. Please check the console.",
         "modifyEventFailed": "Failed to modify event.",
         "taskScheduleFailed": "Failed to schedule task: {{message}}",
+        "tasksSyncFailed": "Failed to sync tasks.",
+        "noTasksProvider": "No Tasks calendar is configured.",
         "moveRecurringDayError": "Cannot move a recurring instance to a different day. Modify the time only or edit the main recurring event.",
         "moveRecurringInstanceError": "Cannot move a recurring instance to a different day. You can only change the time."
       },
       "success": {
         "deletedEvent": "Deleted event \"{{title}}\".",
-        "taskScheduled": "Task scheduled successfully"
+        "taskScheduled": "Task scheduled successfully",
+        "tasksSynced": "Synced Tasks plugin cache. {{count}} task(s) are due or starting today."
       },
       "workspace": {
         "switcherLabel": "Workspace"
       },
       "buttons": {
         "analysis": "Analysis",
-        "defaultView": "Default View"
+        "defaultView": "Default View",
+        "syncTasks": "Sync tasks"
       },
       "contextMenu": {
         "turnIntoTask": "Turn into task",

@@ -569,6 +569,37 @@ export class ProviderRegistry {
     return instance.getCapabilities();
   }
 
+  public async syncTasksFromPlugin(referenceDate = new Date()): Promise<{
+    todayCount: number;
+    eventCount: number;
+    providerCount: number;
+  }> {
+    const taskProviders = this.getActiveProviders().filter(
+      (
+        provider
+      ): provider is CalendarProvider<unknown> & {
+        syncTasksFromPlugin: (referenceDate?: Date) => Promise<{
+          todayCount: number;
+          eventCount: number;
+        }>;
+      } => provider.type === 'tasks' && typeof provider.syncTasksFromPlugin === 'function'
+    );
+
+    if (taskProviders.length === 0) {
+      throw new Error(t('ui.view.errors.noTasksProvider'));
+    }
+
+    const results = await Promise.all(
+      taskProviders.map(provider => provider.syncTasksFromPlugin(referenceDate))
+    );
+
+    return {
+      todayCount: results.reduce((count, result) => count + result.todayCount, 0),
+      eventCount: results.reduce((count, result) => count + result.eventCount, 0),
+      providerCount: taskProviders.length
+    };
+  }
+
   public async createInstanceOverrideInProvider(
     calendarId: string,
     masterEvent: OFCEvent,
